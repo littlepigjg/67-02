@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乐谱编辑器</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        #score-app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #eaeaea;
+        }
+
+        #score-toolbar {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-group {
+            display: flex;
+            gap: 5px;
+            padding: 0 10px;
+            border-right: 1px solid #0f3460;
+        }
+
+        .toolbar-group:last-child {
+            border-right: none;
+        }
+
+        .toolbar-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e94560;
+            margin-right: 20px;
+        }
+
+        .score-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            background: #0f3460;
+            color: white;
+        }
+
+        .score-btn:hover {
+            background: #1a4a7a;
+            transform: translateY(-1px);
+        }
+
+        .score-btn:active {
+            transform: translateY(0);
+        }
+
+        .score-btn.primary {
+            background: #e94560;
+        }
+
+        .score-btn.primary:hover {
+            background: #c73659;
+        }
+
+        .score-btn.success {
+            background: #27ae60;
+        }
+
+        .score-btn.success:hover {
+            background: #219a52;
+        }
+
+        .score-btn.warning {
+            background: #f39c12;
+        }
+
+        .score-btn.warning:hover {
+            background: #d68910;
+        }
+
+        .score-btn.danger {
+            background: #e74c3c;
+        }
+
+        .score-btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .note-tool-btn {
+            padding: 6px 12px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            background: #1a1a2e;
+            color: #eaeaea;
+            transition: all 0.2s;
+            min-width: 44px;
+        }
+
+        .note-tool-btn:hover {
+            background: #0f3460;
+        }
+
+        .note-tool-btn.active {
+            border-color: #e94560;
+            background: #0f3460;
+        }
+
+        #score-main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #score-sidebar {
+            width: 200px;
+            background: #16213e;
+            border-right: 2px solid #0f3460;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 20px;
+        }
+
+        .sidebar-section h3 {
+            color: #e94560;
+            font-size: 14px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #0f3460;
+        }
+
+        .sidebar-item {
+            padding: 8px 10px;
+            margin: 4px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 13px;
+        }
+
+        .sidebar-item:hover {
+            background: #0f3460;
+        }
+
+        .sidebar-item.active {
+            background: #e94560;
+        }
+
+        #score-editor {
+            flex: 1;
+            overflow: auto;
+            padding: 30px;
+            background: #f5f5f5;
+        }
+
+        .score-header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #1a1a2e;
+        }
+
+        .score-title {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .score-meta {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .score-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            min-width: 800px;
+        }
+
+        .staff-container {
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .staff-label {
+            position: absolute;
+            left: -80px;
+            top: 50px;
+            font-size: 12px;
+            color: #666;
+            width: 70px;
+            text-align: right;
+        }
+
+        .staff {
+            position: relative;
+            height: 120px;
+            margin-left: 60px;
+        }
+
+        .clef-symbol {
+            position: absolute;
+            left: 0;
+            top: 30px;
+            font-size: 60px;
+            line-height: 1;
+            color: #1a1a2e;
+        }
+
+        .staff-lines {
+            position: absolute;
+            left: 50px;
+            right: 0;
+            top: 50px;
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .staff-line {
+            height: 1px;
+            background: #333;
+        }
+
+        .measures-container {
+            position: absolute;
+            left: 80px;
+            right: 0;
+            top: 0;
+            height: 100%;
+            display: flex;
+        }
+
+        .measure {
+            flex: 1;
+            position: relative;
+            min-width: 120px;
+            height: 100%;
+        }
+
+        .measure-number {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #999;
+        }
+
+        .key-signature {
+            position: absolute;
+            left: 5px;
+            top: 45px;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .time-signature {
+            position: absolute;
+            left: 40px;
+            top: 35px;
+            font-size: 24px;
+            font-weight: bold;
+            line-height: 1;
+            color: #333;
+        }
+
+        .time-sig-top,
+        .time-sig-bottom {
+            text-align: center;
+        }
+
+        .measure-notes {
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            top: 0;
+            height: 100%;
+        }
+
+        .note-item,
+        .rest-item {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.1s;
+            user-select: none;
+        }
+
+        .note-item:hover,
+        .rest-item:hover {
+            transform: scale(1.1);
+        }
+
+        .note-item.selected,
+        .rest-item.selected {
+            filter: drop-shadow(0 0 4px #e94560);
+        }
+
+        .note-head {
+            font-size: 28px;
+            position: relative;
+        }
+
+        .accidental {
+            position: absolute;
+            left: -18px;
+            top: 2px;
+            font-size: 22px;
+        }
+
+        .note-stem {
+            position: absolute;
+            width: 2px;
+            height: 35px;
+            background: #1a1a2e;
+            right: -2px;
+            top: -20px;
+        }
+
+        .note-item.dotted .note-head::after {
+            content: '•';
+            position: absolute;
+            right: -12px;
+            top: 0;
+            font-size: 20px;
+        }
+
+        .note-dot {
+            position: absolute;
+            right: -10px;
+            top: 8px;
+            font-size: 16px;
+        }
+
+        .note-dynamics {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-style: italic;
+            color: #666;
+        }
+
+        .rest-item {
+            font-size: 28px;
+        }
+
+        .bar-line {
+            position: absolute;
+            right: 0;
+            top: 50px;
+            height: 60px;
+            width: 2px;
+            background: #333;
+        }
+
+        .bar-line-double {
+            width: 6px;
+            background: repeating-linear-gradient(90deg, #333 0px, #333 2px, transparent 2px, transparent 4px, #333 4px, #333 6px);
+        }
+
+        .bar-line-final {
+            width: 6px;
+            background: repeating-linear-gradient(90deg, #333 0px, #333 2px, transparent 2px, transparent 4px, #000 4px, #000 6px);
+        }
+
+        .bar-line-repeatStart,
+        .bar-line-repeatEnd {
+            width: 6px;
+            background: repeating-linear-gradient(90deg, #333 0px, #333 2px, transparent 2px, transparent 6px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast-success {
+            background: #27ae60;
+        }
+
+        .toast-error {
+            background: #e74c3c;
+        }
+
+        .toast-warning {
+            background: #f39c12;
+        }
+
+        .toast-info {
+            background: #3498db;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: #16213e;
+            padding: 30px;
+            border-radius: 12px;
+            min-width: 350px;
+            max-width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content h2 {
+            color: #e94560;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .modal-content input[type="text"],
+        .modal-content input[type="number"],
+        .modal-content select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eaeaea;
+            font-size: 14px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .modal-content input:focus,
+        .modal-content select:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #e94560;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #c73659;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-secondary {
+            background: #7f8c8d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #6c7a7d;
+        }
+
+        .hint {
+            color: #888;
+            font-size: 12px;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+
+        .info-list {
+            font-size: 12px;
+        }
+
+        .info-item {
+            padding: 4px 0;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #0f3460;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .key-accidental {
+            font-size: 16px;
+            margin-right: 2px;
+        }
+
+        .key-accidental.sharp {
+            color: #333;
+        }
+
+        .key-accidental.flat {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="score-app">
+        <div id="score-toolbar">
+            <span class="toolbar-title">🎵 乐谱编辑器</span>
+
+            <div class="toolbar-group">
+                <button class="score-btn primary" onclick="handleNewScore()">📄 新建</button>
+                <button class="score-btn success" onclick="handleSaveScore()">💾 保存</button>
+                <button class="score-btn" onclick="handleLoadScore()">📂 打开</button>
+            </div>
+
+            <div class="toolbar-group">
+                <button class="score-btn" onclick="handleUndo()">↩ 撤销</button>
+                <button class="score-btn" onclick="handleRedo()">↪ 重做</button>
+            </div>
+
+            <div class="toolbar-group">
+                <span style="font-size: 12px; color: #888; align-self: center;">时值:</span>
+                <button class="note-tool-btn" data-tool="note" data-duration="whole" title="全音符">𝅝</button>
+                <button class="note-tool-btn" data-tool="note" data-duration="half" title="二分音符">𝅗𝅥</button>
+                <button class="note-tool-btn active" data-tool="note" data-duration="quarter" title="四分音符">𝅘𝅥</button>
+                <button class="note-tool-btn" data-tool="note" data-duration="eighth" title="八分音符">𝅘𝅥𝅮</button>
+                <button class="note-tool-btn" data-tool="note" data-duration="sixteenth" title="十六分音符">𝅘𝅥𝅯</button>
+            </div>
+
+            <div class="toolbar-group">
+                <button class="score-btn" id="btn-add-note">➕ 添加音符</button>
+                <button class="score-btn danger" id="btn-delete-note">🗑 删除</button>
+            </div>
+
+            <div class="toolbar-group" style="margin-left: auto;">
+                <select id="key-sig-select" onchange="handleKeySigChange(this.value)" style="padding: 8px; border-radius: 6px; border: 1px solid #0f3460; background: #1a1a2e; color: white;">
+                    <option value="C">C大调</option>
+                    <option value="G">G大调</option>
+                    <option value="D">D大调</option>
+                    <option value="F">F大调</option>
+                    <option value="Bb">Bb大调</option>
+                    <option value="Am">A小调</option>
+                    <option value="Em">E小调</option>
+                    <option value="Dm">D小调</option>
+                </select>
+                <select id="time-sig-select" onchange="handleTimeSigChange(this.value)" style="padding: 8px; border-radius: 6px; border: 1px solid #0f3460; background: #1a1a2e; color: white;">
+                    <option value="4/4">4/4拍</option>
+                    <option value="3/4">3/4拍</option>
+                    <option value="2/4">2/4拍</option>
+                    <option value="6/8">6/8拍</option>
+                    <option value="3/8">3/8拍</option>
+                </select>
+                <input type="number" id="tempo-input" value="120" min="20" max="300" 
+                       onchange="handleTempoChange(this.value)"
+                       style="width: 70px; padding: 8px; border-radius: 6px; border: 1px solid #0f3460; background: #1a1a2e; color: white;"
+                       title="速度 (BPM)">
+            </div>
+        </div>
+
+        <div id="score-main">
+            <aside id="score-sidebar">
+                <div class="sidebar-section">
+                    <h3>📋 乐谱信息</h3>
+                    <div class="info-list">
+                        <div class="info-item">
+                            <span>标题</span>
+                            <span id="info-title">未命名</span>
+                        </div>
+                        <div class="info-item">
+                            <span>版本</span>
+                            <span id="info-version">1.0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span>谱表数</span>
+                            <span id="info-staves">1</span>
+                        </div>
+                        <div class="info-item">
+                            <span>小节数</span>
+                            <span id="info-measures">4</span>
+                        </div>
+                        <div class="info-item">
+                            <span>音符数</span>
+                            <span id="info-notes">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>🎹 音高参考</h3>
+                    <div class="info-list">
+                        <div class="info-item"><span>C (Do)</span><span>C4</span></div>
+                        <div class="info-item"><span>D (Re)</span><span>D4</span></div>
+                        <div class="info-item"><span>E (Mi)</span><span>E4</span></div>
+                        <div class="info-item"><span>F (Fa)</span><span>F4</span></div>
+                        <div class="info-item"><span>G (Sol)</span><span>G4</span></div>
+                        <div class="info-item"><span>A (La)</span><span>A4</span></div>
+                        <div class="info-item"><span>B (Si)</span><span>B4</span></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>ℹ️ 使用说明</h3>
+                    <ul style="font-size: 12px; color: #aaa; padding-left: 20px;">
+                        <li>点击"添加音符"添加随机音符</li>
+                        <li>点击音符选中它</li>
+                        <li>按 Delete 删除选中音符</li>
+                        <li>Ctrl+Z 撤销，Ctrl+Y 重做</li>
+                        <li>文件自动保存到本地</li>
+                    </ul>
+                </div>
+            </aside>
+
+            <section id="score-editor">
+            </section>
+        </div>
+    </div>
+
+    <script src="js/scoreTypes.js"></script>
+    <script src="js/scoreState.js"></script>
+    <script src="js/scoreStorage.js"></script>
+    <script src="js/scoreUI.js"></script>
+    <script>
+        function handleUndo() {
+            if (undo()) {
+                renderScore();
+                showToast('已撤销', 'info');
+            } else {
+                showToast('无法撤销', 'warning');
+            }
+        }
+
+        function handleRedo() {
+            if (redo()) {
+                renderScore();
+                showToast('已重做', 'info');
+            } else {
+                showToast('无法重做', 'warning');
+            }
+        }
+
+        function handleKeySigChange(value) {
+            if (setKeySignature(value)) {
+                renderScore();
+                showToast('调号已更改', 'info');
+            }
+        }
+
+        function handleTimeSigChange(value) {
+            if (setTimeSignature(value)) {
+                renderScore();
+                showToast('拍号已更改', 'info');
+            }
+        }
+
+        function handleTempoChange(value) {
+            if (setTempo(value)) {
+                renderScore();
+                showToast('速度已更改', 'info');
+            }
+        }
+
+        function updateInfoPanel() {
+            const score = ScoreState.score;
+            if (!score) return;
+
+            const info = getScoreInfo(score);
+            document.getElementById('info-title').textContent = info.title;
+            document.getElementById('info-version').textContent = info.version;
+            document.getElementById('info-staves').textContent = info.staffCount;
+            document.getElementById('info-measures').textContent = info.measureCount;
+            document.getElementById('info-notes').textContent = info.noteCount;
+        }
+
+        const originalRenderScore = renderScore;
+        renderScore = function() {
+            originalRenderScore();
+            updateInfoPanel();
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initScoreEditor();
+            checkAutoSaveOnLoad();
+
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'z') {
+                    e.preventDefault();
+                    handleUndo();
+                } else if (e.ctrlKey && e.key === 'y') {
+                    e.preventDefault();
+                    handleRedo();
+                } else if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    handleSaveScore();
+                } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    if (ScoreUI.selectedNote) {
+                        e.preventDefault();
+                        deleteSelectedNote();
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

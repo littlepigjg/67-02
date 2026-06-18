@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乐谱持久化测试</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #1a1a2e;
+            color: #eaeaea;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #e94560;
+        }
+        .test-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .test-summary {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 30px;
+        }
+        .summary-item {
+            text-align: center;
+        }
+        .summary-item .label {
+            font-size: 12px;
+            color: #888;
+        }
+        .summary-item .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .value.pass { color: #27ae60; }
+        .value.fail { color: #e74c3c; }
+        .value.total { color: #3498db; }
+
+        .test-group {
+            background: #16213e;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .test-group h2 {
+            color: #3498db;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .test-case {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f3460;
+        }
+        .test-case.pass { border-left: 4px solid #27ae60; }
+        .test-case.fail { border-left: 4px solid #e74c3c; }
+        .test-case .name { font-size: 13px; }
+        .test-case .status {
+            font-weight: bold;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .test-case .status.pass { background: #27ae60; color: white; }
+        .test-case .status.fail { background: #e74c3c; color: white; }
+        .test-case .error {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #e74c3c;
+            font-family: monospace;
+            background: rgba(231, 76, 60, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .test-case-wrap {
+            flex: 1;
+        }
+
+        .test-btn {
+            padding: 10px 20px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .test-btn:hover { background: #c73659; }
+
+        .test-json-output {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 300px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎵 乐谱持久化功能测试</h1>
+
+        <div class="test-summary">
+            <div class="summary-item">
+                <div class="label">总测试</div>
+                <div class="value total" id="total-count">0</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">通过</div>
+                <div class="value pass" id="pass-count">0</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">失败</div>
+                <div class="value fail" id="fail-count">0</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">耗时</div>
+                <div class="value total" id="time-ms">0ms</div>
+            </div>
+            <button class="test-btn" onclick="runAllTests()">▶ 运行测试</button>
+        </div>
+
+        <div id="test-results"></div>
+
+        <div style="margin-top: 20px;">
+            <h2 style="color: #e94560; font-size: 16px;">📄 示例乐谱 JSON 预览</h2>
+            <button class="test-btn" onclick="showSampleJSON()">生成示例乐谱</button>
+            <div class="test-json-output" id="json-output">点击上方按钮生成示例乐谱JSON</div>
+        </div>
+    </div>
+
+    <script src="js/scoreTypes.js"></script>
+    <script src="js/scoreState.js"></script>
+    <script src="js/scoreStorage.js"></script>
+    <script>
+        const TestResults = {
+            total: 0,
+            pass: 0,
+            fail: 0,
+            groups: {}
+        };
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message || '断言失败');
+            }
+        }
+
+        function assertEqual(actual, expected, message) {
+            if (actual !== expected) {
+                throw new Error(`${message || '断言失败'}: 期望 ${expected}, 实际 ${actual}`);
+            }
+        }
+
+        function assertNotEmpty(obj, message) {
+            if (!obj || (Array.isArray(obj) && obj.length === 0)) {
+                throw new Error(message || '对象不应为空');
+            }
+        }
+
+        function runGroup(groupName, testFns) {
+            TestResults.groups[groupName] = [];
+            for (const test of testFns) {
+                TestResults.total++;
+                try {
+                    test.fn();
+                    TestResults.pass++;
+                    TestResults.groups[groupName].push({ name: test.name, pass: true });
+                } catch (e) {
+                    TestResults.fail++;
+                    TestResults.groups[groupName].push({ name: test.name, pass: false, error: e.message });
+                    console.error(`测试失败: ${test.name}`, e);
+                }
+            }
+        }
+
+        const testSuites = [
+            {
+                name: '1. 数据结构类型',
+                tests: [
+                    {
+                        name: 'ScoreVersion 存在且有效',
+                        fn: () => {
+                            assertNotEmpty(ScoreVersion, 'ScoreVersion 不应为空');
+                            assert(typeof ScoreVersion === 'string', 'ScoreVersion 应为字符串');
+                            assert(ScoreVersion.split('.').length >= 2, '版本号格式不正确');
+                        }
+                    },
+                    {
+                        name: 'KeySignatures 包含常见调号',
+                        fn: () => {
+                            assertNotEmpty(KeySignatures, 'KeySignatures 不应为空');
+                            assert(KeySignatures['C'], '应包含 C 大调');
+                            assert(KeySignatures['G'], '应包含 G 大调');
+                            assert(KeySignatures['F'], '应包含 F 大调');
+                            assert(KeySignatures['Am'], '应包含 A 小调');
+                            assert(KeySignatures['C'].mode === 'major', 'C大调 mode 应为 major');
+                            assert(KeySignatures['Am'].mode === 'minor', 'A小调 mode 应为 minor');
+                        }
+                    },
+                    {
+                        name: 'TimeSignatures 包含常见拍号',
+                        fn: () => {
+                            assertNotEmpty(TimeSignatures, 'TimeSignatures 不应为空');
+                            assert(TimeSignatures['4/4'], '应包含 4/4 拍');
+                            assert(TimeSignatures['3/4'], '应包含 3/4 拍');
+                            assert(TimeSignatures['6/8'], '应包含 6/8 拍');
+                            assert(TimeSignatures['4/4'].beats === 4, '4/4拍应为4拍');
+                        }
+                    },
+                    {
+                        name: 'NoteDurations 包含各时值',
+                        fn: () => {
+                            assert(NoteDurations.whole, '应包含全音符');
+                            assert(NoteDurations.half, '应包含二分音符');
+                            assert(NoteDurations.quarter, '应包含四分音符');
+                            assert(NoteDurations.eighth, '应包含八分音符');
+                            assert(NoteDurations.sixteenth, '应包含十六分音符');
+                            assert(NoteDurations.whole.value === 4, '全音符时值应为4拍');
+                            assert(NoteDurations.quarter.value === 1, '四分音符时值应为1拍');
+                        }
+                    },
+                    {
+                        name: 'BarLineTypes 包含各类型小节线',
+                        fn: () => {
+                            assert(BarLineTypes.single, '应包含单竖线');
+                            assert(BarLineTypes.double, '应包含双竖线');
+                            assert(BarLineTypes.repeatStart, '应包含反复开始');
+                            assert(BarLineTypes.repeatEnd, '应包含反复结束');
+                            assert(BarLineTypes.final, '应包含终止线');
+                        }
+                    },
+                    {
+                        name: 'Clefs 包含各谱号',
+                        fn: () => {
+                            assert(Clefs.treble, '应包含高音谱号');
+                            assert(Clefs.bass, '应包含低音谱号');
+                            assert(Clefs.alto, '应包含中音谱号');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '2. 工厂函数',
+                tests: [
+                    {
+                        name: 'createNote 创建有效音符',
+                        fn: () => {
+                            const note = createNote('C', 'quarter', { octave: 4 });
+                            assert(note.id, '音符应有ID');
+                            assertEqual(note.type, 'note', '类型应为 note');
+                            assertEqual(note.pitch, 'C', '音高应为 C');
+                            assertEqual(note.duration, 'quarter', '时值应为四分音符');
+                            assertEqual(note.octave, 4, '八度应为4');
+                            assert(note.selected === false, '默认不应选中');
+                        }
+                    },
+                    {
+                        name: 'createRest 创建有效休止符',
+                        fn: () => {
+                            const rest = createRest('half');
+                            assert(rest.id, '休止符应有ID');
+                            assertEqual(rest.type, 'rest', '类型应为 rest');
+                            assertEqual(rest.duration, 'half', '时值应为二分音符');
+                        }
+                    },
+                    {
+                        name: 'createBarLine 创建有效小节线',
+                        fn: () => {
+                            const barLine = createBarLine('final');
+                            assert(barLine.id, '小节线应有ID');
+                            assertEqual(barLine.type, 'barline', '类型应为 barline');
+                            assertEqual(barLine.barLineType, 'final', '小节线类型应为 final');
+                        }
+                    },
+                    {
+                        name: 'createMeasure 创建有效小节',
+                        fn: () => {
+                            const measure = createMeasure(3);
+                            assert(measure.id, '小节应有ID');
+                            assertEqual(measure.measureNumber, 3, '小节号应为3');
+                            assert(Array.isArray(measure.notes), 'notes 应为数组');
+                            assertEqual(measure.barLine, 'single', '默认小节线应为 single');
+                        }
+                    },
+                    {
+                        name: 'createStaff 创建有效谱表',
+                        fn: () => {
+                            const staff = createStaff({ name: '钢琴右手', clef: 'treble' });
+                            assert(staff.id, '谱表应有ID');
+                            assertEqual(staff.name, '钢琴右手', '名称不匹配');
+                            assertEqual(staff.clef, 'treble', '谱号应为高音谱号');
+                            assert(Array.isArray(staff.measures), 'measures 应为数组');
+                        }
+                    },
+                    {
+                        name: 'createScore 创建完整乐谱',
+                        fn: () => {
+                            const score = createScore({
+                                title: '测试乐曲',
+                                keySignature: 'G',
+                                timeSignature: '3/4',
+                                tempo: 100
+                            });
+                            assertEqual(score.version, ScoreVersion, '版本号应匹配');
+                            assertEqual(score.title, '测试乐曲', '标题不匹配');
+                            assertEqual(score.metadata.keySignature, 'G', '调号不匹配');
+                            assertEqual(score.metadata.timeSignature, '3/4', '拍号不匹配');
+                            assertEqual(score.metadata.tempo, 100, '速度不匹配');
+                            assert(score.createdAt, '应有创建时间');
+                            assert(score.updatedAt, '应有更新时间');
+                            assert(Array.isArray(score.staves), 'staves 应为数组');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '3. JSON 序列化',
+                tests: [
+                    {
+                        name: 'serializeScore 序列化为对象',
+                        fn: () => {
+                            initScoreState();
+                            const data = serializeScore(ScoreState.score);
+                            assert(data, '序列化结果不应为空');
+                            assertEqual(data.version, ScoreVersion, '版本号应匹配');
+                            assert(data.staves, '应包含 staves');
+                            assert(data.metadata, '应包含 metadata');
+                            assert(data.updatedAt, '应包含更新时间');
+                        }
+                    },
+                    {
+                        name: 'serializeScoreToJSON 生成有效JSON字符串',
+                        fn: () => {
+                            initScoreState();
+                            const json = serializeScoreToJSON(ScoreState.score);
+                            assert(typeof json === 'string', '结果应为字符串');
+                            const parsed = JSON.parse(json);
+                            assert(parsed.version, '解析后应有version');
+                            assert(parsed.staves, '解析后应有staves');
+                        }
+                    },
+                    {
+                        name: 'JSON 往返序列化数据一致',
+                        fn: () => {
+                            initScoreState();
+                            const original = ScoreState.score;
+                            const json = serializeScoreToJSON(original);
+                            const data = JSON.parse(json);
+
+                            assertEqual(data.title, original.title, '标题应一致');
+                            assertEqual(data.metadata.keySignature, original.metadata.keySignature, '调号应一致');
+                            assertEqual(data.metadata.timeSignature, original.metadata.timeSignature, '拍号应一致');
+                            assertEqual(data.metadata.tempo, original.metadata.tempo, '速度应一致');
+                            assertEqual(data.staves.length, original.staves.length, '谱表数量应一致');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '4. 数据验证',
+                tests: [
+                    {
+                        name: 'validateScoreStructure 验证有效乐谱',
+                        fn: () => {
+                            initScoreState();
+                            const data = serializeScore(ScoreState.score);
+                            const result = validateScoreStructure(data);
+                            assert(result.valid, '有效乐谱应通过验证');
+                            assert(Array.isArray(result.errors), 'errors 应为数组');
+                            assert(Array.isArray(result.warnings), 'warnings 应为数组');
+                        }
+                    },
+                    {
+                        name: 'validateScoreStructure 检测null数据',
+                        fn: () => {
+                            const result = validateScoreStructure(null);
+                            assertEqual(result.valid, false, 'null数据应验证失败');
+                            assert(result.errors.length > 0, '应有错误信息');
+                        }
+                    },
+                    {
+                        name: 'validateScoreStructure 检测空对象',
+                        fn: () => {
+                            const result = validateScoreStructure({});
+                            assert(result.valid, '空对象应视为有效（但有警告）');
+                            assert(result.hasWarnings, '应有警告');
+                        }
+                    },
+                    {
+                        name: 'validateScoreStructure 检测无效调号',
+                        fn: () => {
+                            const data = {
+                                metadata: { keySignature: 'InvalidKey' },
+                                staves: []
+                            };
+                            const result = validateScoreStructure(data);
+                            assert(result.valid, '无效调号不应导致验证失败（仅警告）');
+                            assert(result.warnings.some(w => w.includes('调号')), '应有调号警告');
+                        }
+                    },
+                    {
+                        name: 'validateScoreStructure 检测无效拍号',
+                        fn: () => {
+                            const data = {
+                                metadata: { timeSignature: '99/99' },
+                                staves: []
+                            };
+                            const result = validateScoreStructure(data);
+                            assert(result.valid, '无效拍号不应导致验证失败（仅警告）');
+                            assert(result.warnings.some(w => w.includes('拍号')), '应有拍号警告');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '5. 版本迁移',
+                tests: [
+                    {
+                        name: 'migrateScoreVersion 处理无版本号数据',
+                        fn: () => {
+                            const data = { title: 'Old Score' };
+                            const migrated = migrateScoreVersion(data);
+                            assertEqual(migrated.version, ScoreVersion, '应更新为当前版本');
+                            assert(migrated.metadata, '应添加默认元数据');
+                            assert(migrated.staves, '应添加默认谱表数组');
+                        }
+                    },
+                    {
+                        name: 'migrateScoreVersion 保留已有数据',
+                        fn: () => {
+                            const data = {
+                                version: ScoreVersion,
+                                title: 'Test',
+                                metadata: { keySignature: 'D', tempo: 140 },
+                                staves: []
+                            };
+                            const migrated = migrateScoreVersion(data);
+                            assertEqual(migrated.title, 'Test', '标题应保留');
+                            assertEqual(migrated.metadata.keySignature, 'D', '调号应保留');
+                            assertEqual(migrated.metadata.tempo, 140, '速度应保留');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '6. 损坏文件修复',
+                tests: [
+                    {
+                        name: 'repairScoreData 修复空对象',
+                        fn: () => {
+                            const data = {};
+                            const repaired = repairScoreData(data);
+                            assert(repaired.version, '应添加版本号');
+                            assert(repaired.metadata, '应添加元数据');
+                            assert(repaired.staves, '应添加谱表数组');
+                            assert(repaired.staves.length > 0, '应至少有一个谱表');
+                            assert(repaired.staves[0].measures.length > 0, '应至少有一个小节');
+                        }
+                    },
+                    {
+                        name: 'repairScoreData 修复无效调号',
+                        fn: () => {
+                            const data = {
+                                metadata: { keySignature: 'Invalid' },
+                                staves: [{ measures: [{}] }]
+                            };
+                            const repaired = repairScoreData(data);
+                            assertEqual(repaired.metadata.keySignature, 'C', '应回退到C大调');
+                        }
+                    },
+                    {
+                        name: 'repairScoreData 修复无效拍号',
+                        fn: () => {
+                            const data = {
+                                metadata: { timeSignature: 'Invalid' },
+                                staves: [{ measures: [{}] }]
+                            };
+                            const repaired = repairScoreData(data);
+                            assertEqual(repaired.metadata.timeSignature, '4/4', '应回退到4/4拍');
+                        }
+                    },
+                    {
+                        name: 'repairScoreData 修复无效速度值',
+                        fn: () => {
+                            const data = {
+                                metadata: { tempo: 'abc' },
+                                staves: [{ measures: [{}] }]
+                            };
+                            const repaired = repairScoreData(data);
+                            assertEqual(repaired.metadata.tempo, 120, '应回退到默认速度');
+                        }
+                    },
+                    {
+                        name: 'repairScoreData 修复缺失ID的音符',
+                        fn: () => {
+                            const data = {
+                                staves: [{
+                                    measures: [{
+                                        notes: [{ type: 'note', pitch: 'C' }]
+                                    }]
+                                }]
+                            };
+                            const repaired = repairScoreData(data);
+                            const note = repaired.staves[0].measures[0].notes[0];
+                            assert(note.id, '应自动生成ID');
+                            assertEqual(note.duration, 'quarter', '应使用默认时值');
+                            assertEqual(note.octave, 4, '应使用默认八度');
+                        }
+                    },
+                    {
+                        name: 'repairScoreData 修复音符数组为非数组',
+                        fn: () => {
+                            const data = {
+                                staves: [{
+                                    measures: [{ notes: 'invalid' }]
+                                }]
+                            };
+                            const repaired = repairScoreData(data);
+                            assert(Array.isArray(repaired.staves[0].measures[0].notes), 'notes 应修复为数组');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '7. 反序列化',
+                tests: [
+                    {
+                        name: 'deserializeScore 解析有效JSON',
+                        fn: () => {
+                            initScoreState();
+                            const json = serializeScoreToJSON(ScoreState.score);
+                            const result = deserializeScore(json);
+                            assert(result.valid, '解析应成功');
+                            assert(result.score, '应包含score');
+                            assert(result.version, '应包含version');
+                        }
+                    },
+                    {
+                        name: 'deserializeScore 处理无效JSON',
+                        fn: () => {
+                            let threw = false;
+                            try {
+                                deserializeScore('invalid json {{{');
+                            } catch (e) {
+                                threw = true;
+                            }
+                            assert(threw, '无效JSON应抛出异常');
+                        }
+                    },
+                    {
+                        name: 'deserializeScoreFromData 处理损坏数据',
+                        fn: () => {
+                            const result = deserializeScoreFromData({});
+                            assert(result.valid, '损坏数据应能修复并视为有效');
+                            assert(result.repaired, 'repaired 标志应为 true');
+                            assert(result.score, '应包含修复后的score');
+                        }
+                    },
+                    {
+                        name: 'loadScoreFromString 加载并更新状态',
+                        fn: () => {
+                            const testScore = createScore({ title: '加载测试' });
+                            const json = JSON.stringify(serializeScore(testScore));
+                            const result = loadScoreFromString(json);
+                            assert(result.valid, '加载应成功');
+                            assert(ScoreState.score, 'State.score 应被设置');
+                            assertEqual(ScoreState.score.title, '加载测试', '标题应匹配');
+                            assertEqual(ScoreState.history.length, 1, '历史记录应有1条');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '8. 自动保存',
+                tests: [
+                    {
+                        name: 'autoSaveScore 保存到localStorage',
+                        fn: () => {
+                            initScoreState();
+                            autoSaveScore();
+                            const saved = localStorage.getItem(ScoreStorage.autoSaveKey);
+                            assert(saved, '应保存到localStorage');
+                            const data = JSON.parse(saved);
+                            assert(data.version, '保存的数据应有版本');
+                        }
+                    },
+                    {
+                        name: 'loadAutoSave 从localStorage加载',
+                        fn: () => {
+                            initScoreState();
+                            ScoreState.score.title = '自动保存测试';
+                            autoSaveScore();
+
+                            const result = loadAutoSave();
+                            assert(result, '应能加载自动保存的数据');
+                            assert(result.score, '应包含score');
+                        }
+                    },
+                    {
+                        name: 'hasAutoSave 检测自动保存存在',
+                        fn: () => {
+                            autoSaveScore();
+                            assert(hasAutoSave(), 'hasAutoSave 应返回 true');
+                        }
+                    },
+                    {
+                        name: 'clearAutoSave 清除自动保存',
+                        fn: () => {
+                            autoSaveScore();
+                            assert(hasAutoSave(), '清除前应有自动保存');
+                            clearAutoSave();
+                            assert(!hasAutoSave(), '清除后应无自动保存');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '9. 工具函数',
+                tests: [
+                    {
+                        name: 'validateAndRepairScore 验证修复一体化',
+                        fn: () => {
+                            const result = validateAndRepairScore({});
+                            assert(result.repairable, '应能修复');
+                            assert(result.score, '应返回修复后的乐谱');
+                        }
+                    },
+                    {
+                        name: 'validateAndRepairScore 处理无效JSON字符串',
+                        fn: () => {
+                            const result = validateAndRepairScore('invalid json');
+                            assertEqual(result.valid, false, '应验证失败');
+                            assertEqual(result.repairable, false, '应无法修复');
+                        }
+                    },
+                    {
+                        name: 'getScoreInfo 返回正确统计',
+                        fn: () => {
+                            initScoreState();
+                            const info = getScoreInfo(ScoreState.score);
+                            assertEqual(info.title, '新乐谱', '标题应匹配');
+                            assert(info.staffCount > 0, '应有谱表');
+                            assert(info.measureCount > 0, '应有小节');
+                            assertEqual(typeof info.noteCount, 'number', '音符数应为数字');
+                            assert(info.keySignature, '应包含调号');
+                            assert(info.timeSignature, '应包含拍号');
+                            assert(info.tempo, '应包含速度');
+                        }
+                    },
+                    {
+                        name: 'exportScoreAsJSON 导出JSON',
+                        fn: () => {
+                            initScoreState();
+                            const json = exportScoreAsJSON(ScoreState.score);
+                            assert(typeof json === 'string', '应为字符串');
+                            const parsed = JSON.parse(json);
+                            assert(parsed.version, '解析后应有版本');
+                        }
+                    }
+                ]
+            },
+            {
+                name: '10. 状态管理',
+                tests: [
+                    {
+                        name: 'initScoreState 初始化状态',
+                        fn: () => {
+                            initScoreState();
+                            assert(ScoreState.score, 'score 应存在');
+                            assert(ScoreState.history.length > 0, '历史记录应有数据');
+                            assertEqual(ScoreState.isDirty, false, '初始不应为脏状态');
+                        }
+                    },
+                    {
+                        name: 'addNote 添加音符',
+                        fn: () => {
+                            initScoreState();
+                            const note = createNote('D', 'eighth');
+                            const result = addNote(0, 0, note);
+                            assert(result, '应返回新音符');
+                            assert(result.id, '应有ID');
+                            const measure = ScoreState.score.staves[0].measures[0];
+                            assert(measure.notes.some(n => n.id === result.id), '音符应在小节中');
+                        }
+                    },
+                    {
+                        name: 'removeNote 删除音符',
+                        fn: () => {
+                            initScoreState();
+                            const note = addNote(0, 0, createNote('E', 'quarter'));
+                            const beforeCount = ScoreState.score.staves[0].measures[0].notes.length;
+                            const result = removeNote(0, 0, note.id);
+                            assert(result, '删除应返回 true');
+                            const afterCount = ScoreState.score.staves[0].measures[0].notes.length;
+                            assert(afterCount < beforeCount, '删除后数量应减少');
+                        }
+                    },
+                    {
+                        name: 'updateNote 更新音符',
+                        fn: () => {
+                            initScoreState();
+                            const note = addNote(0, 0, createNote('F', 'quarter'));
+                            const updated = updateNote(0, 0, note.id, { pitch: 'G', octave: 5 });
+                            assert(updated, '应返回更新后的音符');
+                            assertEqual(updated.pitch, 'G', '音高应更新');
+                            assertEqual(updated.octave, 5, '八度应更新');
+                        }
+                    },
+                    {
+                        name: 'undo/redo 撤销重做',
+                        fn: () => {
+                            initScoreState();
+                            const initialCount = ScoreState.historyIndex;
+
+                            addNote(0, 0, createNote('A', 'half'));
+                            const afterAddIndex = ScoreState.historyIndex;
+                            assert(afterAddIndex > initialCount, '添加后历史索引应增加');
+
+                            const undoResult = undo();
+                            assert(undoResult, '撤销应成功');
+                            assert(ScoreState.historyIndex < afterAddIndex, '撤销后历史索引应减少');
+
+                            const redoResult = redo();
+                            assert(redoResult, '重做应成功');
+                            assertEqual(ScoreState.historyIndex, afterAddIndex, '重做后历史索引应恢复');
+                        }
+                    },
+                    {
+                        name: 'setKeySignature 更改调号',
+                        fn: () => {
+                            initScoreState();
+                            const result = setKeySignature('D');
+                            assert(result, '设置调号应成功');
+                            assertEqual(ScoreState.score.metadata.keySignature, 'D', '调号应更新');
+                        }
+                    },
+                    {
+                        name: 'setTimeSignature 更改拍号',
+                        fn: () => {
+                            initScoreState();
+                            const result = setTimeSignature('3/4');
+                            assert(result, '设置拍号应成功');
+                            assertEqual(ScoreState.score.metadata.timeSignature, '3/4', '拍号应更新');
+                        }
+                    },
+                    {
+                        name: 'setTempo 更改速度',
+                        fn: () => {
+                            initScoreState();
+                            const result = setTempo(160);
+                            assert(result, '设置速度应成功');
+                            assertEqual(ScoreState.score.metadata.tempo, 160, '速度应更新');
+                        }
+                    },
+                    {
+                        name: 'addMeasure 添加小节',
+                        fn: () => {
+                            initScoreState();
+                            const beforeCount = ScoreState.score.staves[0].measures.length;
+                            addMeasure(0);
+                            const afterCount = ScoreState.score.staves[0].measures.length;
+                            assert(afterCount > beforeCount, '小节数应增加');
+                        }
+                    },
+                    {
+                        name: 'removeMeasure 删除小节',
+                        fn: () => {
+                            initScoreState();
+                            addMeasure(0);
+                            addMeasure(0);
+                            const beforeCount = ScoreState.score.staves[0].measures.length;
+                            const result = removeMeasure(0, 0);
+                            assert(result, '删除应成功');
+                            const afterCount = ScoreState.score.staves[0].measures.length;
+                            assert(afterCount < beforeCount, '小节数应减少');
+                        }
+                    },
+                    {
+                        name: 'findNoteById 查找音符',
+                        fn: () => {
+                            initScoreState();
+                            const note = addNote(0, 0, createNote('B', 'eighth'));
+                            const found = findNoteById(note.id);
+                            assert(found, '应找到音符');
+                            assertEqual(found.note.id, note.id, 'ID应匹配');
+                            assertEqual(found.staffIndex, 0, '谱表索引应匹配');
+                            assertEqual(found.measureIndex, 0, '小节索引应匹配');
+                        }
+                    }
+                ]
+            }
+        ];
+
+        function renderTestResults() {
+            const container = document.getElementById('test-results');
+            let html = '';
+
+            for (const groupName in TestResults.groups) {
+                const tests = TestResults.groups[groupName];
+                html += `<div class="test-group"><h2>${groupName}</h2>`;
+                tests.forEach(t => {
+                    html += `
+                        <div class="test-case ${t.pass ? 'pass' : 'fail'}">
+                            <div class="test-case-wrap">
+                                <div class="name">${t.pass ? '✅' : '❌'} ${t.name}</div>
+                                ${t.error ? `<div class="error">${t.error}</div>` : ''}
+                            </div>
+                            <span class="status ${t.pass ? 'pass' : 'fail'}">${t.pass ? 'PASS' : 'FAIL'}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+            document.getElementById('total-count').textContent = TestResults.total;
+            document.getElementById('pass-count').textContent = TestResults.pass;
+            document.getElementById('fail-count').textContent = TestResults.fail;
+        }
+
+        function runAllTests() {
+            TestResults.total = 0;
+            TestResults.pass = 0;
+            TestResults.fail = 0;
+            TestResults.groups = {};
+
+            const startTime = Date.now();
+
+            for (const suite of testSuites) {
+                runGroup(suite.name, suite.tests);
+            }
+
+            const elapsed = Date.now() - startTime;
+            document.getElementById('time-ms').textContent = elapsed + 'ms';
+
+            renderTestResults();
+        }
+
+        function showSampleJSON() {
+            initScoreState();
+
+            addNote(0, 0, createNote('C', 'quarter', { octave: 4, x: 20 }));
+            addNote(0, 0, createNote('D', 'quarter', { octave: 4, x: 80 }));
+            addNote(0, 0, createNote('E', 'quarter', { octave: 4, x: 140 }));
+            addNote(0, 0, createNote('F', 'quarter', { octave: 4, x: 200, dot: true }));
+
+            addNote(0, 1, createNote('G', 'half', { octave: 4, x: 20 }));
+            addNote(0, 1, createNote('A', 'quarter', { octave: 4, x: 100 }));
+            addNote(0, 1, createRest('eighth', { x: 160 }));
+            addNote(0, 1, createNote('B', 'eighth', { octave: 4, x: 200 }));
+
+            addNote(0, 2, createNote('C', 'whole', { octave: 5, x: 20, dynamics: 'f' }));
+
+            const json = serializeScoreToJSON(ScoreState.score);
+            document.getElementById('json-output').textContent = json;
+        }
+
+        window.addEventListener('load', () => {
+            runAllTests();
+        });
+    </script>
+</body>
+</html>
